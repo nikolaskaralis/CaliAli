@@ -2,7 +2,7 @@ function [modified_input_files,batch_sz,F] = create_batch_list(input_files, batc
 %% create_batch_list: Create batch-aware input file list for processing.
 %
 % Inputs:
-%   input_files - Cell array of file paths to process
+%   input_files - Cell array of file paths to process, in caller-provided order
 %   batch_sz    - Maximum number of frames per batch (0 = no batching)
 %
 % Outputs:

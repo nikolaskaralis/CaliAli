@@ -44,6 +44,7 @@ end
 out=outpath;
 vid=[];
 if ~isfile(outpath)
+    % Concatenation preserves inputh order exactly; callers control ordering.
     for k=progress(1:length(inputh))
         fullFileName = inputh{k};
         vid{k}=CaliAli_load(fullFileName,'Y');     

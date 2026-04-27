@@ -400,6 +400,7 @@ if isempty(files)
     warning('No files with extension %s found in %s', opt.file_extension, fullFileName);
     return
 end
+files = natsortfiles(files);
 
 opt_local = opt;
 opt_local.input_files = fullfile({files.folder}, {files.name})';

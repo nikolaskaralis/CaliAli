@@ -1,5 +1,6 @@
 function process_folder(fullFileName,opt)
 files=dir([fullFileName,filesep,'*',opt.file_extension]);  
+files=natsortfiles(files);
 opt.input_files   = fullfile({files.folder}, {files.name})';
 CaliAli_options=CaliAli_downsample(opt);
 
