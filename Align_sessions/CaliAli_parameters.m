@@ -40,7 +40,7 @@ if isstruct(varargin{1})
 end
 NameValue_param={};
 if numel(varargin)>1
-    NameValue_param=[varargin(1:2:end), varargin(2:2:end)]';
+    NameValue_param=[varargin(1:2:end); varargin(2:2:end)];
 end
 
 varargin=[struct_param,NameValue_param];
@@ -78,6 +78,8 @@ inp.PartialMatching = false;
 valid_pos_scalar = @(x) isnumeric(x) && isscalar(x) && isfinite(x) && (x > 0);
 valid_optional_pos_scalar = @(x) isempty(x) || valid_pos_scalar(x);
 valid_char = @(x) ischar(x) || (isstring(x) && isscalar(x));
+valid_bool_scalar = @(x) (islogical(x) && isscalar(x)) || (isnumeric(x) && isscalar(x) && ismember(x,[0 1])) || ...
+    (iscell(x) && isscalar(x) && ((islogical(x{1}) && isscalar(x{1})) || (isnumeric(x{1}) && isscalar(x{1}) && ismember(x{1},[0 1]))));
 %% General variables
 addParameter(inp,'input_files',[])            %Cell array containing paths to the input video files
 addParameter(inp,'output_files',[])           %Cell array containing paths to the output video of individual sessions
@@ -89,6 +91,9 @@ addParameter(inp,'spatial_ds',1,valid_pos_scalar)      %Spatial Downsampling fac
 addParameter(inp,'temporal_ds',1,valid_pos_scalar)     %Temporal Downsampling factor
 addParameter(inp,'batch_sz','auto',@(x) (isnumeric(x)&&isscalar(x)&&isfinite(x)&&x>=0) || ...
     (ischar(x)&&strcmpi(x,'auto')) || (isstring(x)&&isscalar(x)&&strcmpi(x,'auto'))) % Batch size for downsampling (0=all at once, 'auto'=heuristic)
+addParameter(inp,'use_fast_ffmpeg',false,valid_bool_scalar) % Use FFmpeg for grayscale/scaled video decoding when available.
+addParameter(inp,'ffmpeg_path','',valid_char) % Optional path to an FFmpeg executable for fast video decoding.
+addParameter(inp,'keep_split_ds_files',true,valid_bool_scalar) % Keep per-segment _ds.mat files after folder concatenation.
 
 addParameter(inp,'file_extension','avi',valid_char)      % if a folder is selected instead of a single video file,
 % Concatenate all videos with the specified file extension
@@ -101,6 +106,12 @@ end
 inp.KeepUnmatched = true;
 parse(inp,varargin{:});
 opt=inp.Results;
+if iscell(opt.use_fast_ffmpeg)
+    opt.use_fast_ffmpeg = opt.use_fast_ffmpeg{1};
+end
+if iscell(opt.keep_split_ds_files)
+    opt.keep_split_ds_files = opt.keep_split_ds_files{1};
+end
 
 if opt.spatial_ds <= 0
     error('CaliAli:InvalidSpatialDownsampling','spatial_ds must be positive.');
@@ -196,6 +207,11 @@ addParameter(inp,'batch_sz','auto',valid_batch_input)                % Batch siz
 addParameter(inp,'Mask',[])                   % Motion correction Mask
 %% Motion correction parameters
 addParameter(inp,'do_non_rigid',false,valid_bool_scalar)        %Do non-rigid registration
+addParameter(inp,'use_parallel',true,valid_bool_scalar)          % Use parallel workers for motion correction when available.
+addParameter(inp,'use_fast_shift',true,valid_bool_scalar)       % Use NoRMCorre shift application utilities instead of per-frame imtranslate.
+addParameter(inp,'shifts_method','linear',@(x) ischar(x) || (isstring(x) && isscalar(x))) % Shift interpolation method for fast application.
+addParameter(inp,'motion_correction_mode','fast',@(x) ischar(x) || (isstring(x) && isscalar(x))) % 'full' or 'fast'.
+addParameter(inp,'non_rigid_mode','full',@(x) ischar(x) || (isstring(x) && isscalar(x))) % 'full' or 'single_pass'.
 addParameter(inp, ...
     'reference_projection_rigid','BV')     %Reference projections used for translation. Valid parameters are 'BV' or 'neurons'
 addParameter(inp, ...
@@ -229,6 +245,26 @@ opt=inp.Results;
 if isstring(opt.batch_sz)
     opt.batch_sz = char(opt.batch_sz);
 end
+if isstring(opt.shifts_method)
+    opt.shifts_method = char(opt.shifts_method);
+end
+if isstring(opt.motion_correction_mode)
+    opt.motion_correction_mode = char(opt.motion_correction_mode);
+end
+if isstring(opt.non_rigid_mode)
+    opt.non_rigid_mode = char(opt.non_rigid_mode);
+end
+switch lower(opt.motion_correction_mode)
+    case 'full'
+        % Preserve explicit flags.
+    case 'fast'
+        opt.use_parallel = true;
+        opt.use_fast_shift = true;
+        opt.shifts_method = 'linear';
+        opt.non_rigid_mode = 'single_pass';
+    otherwise
+        error('CaliAli:InvalidMotionCorrectionMode','motion_correction_mode must be full or fast.');
+end
 
 if ~isempty(opt.sf) && opt.sf <= 0
     error('CaliAli:InvalidFrameRate','motion_correction.sf must be positive.');
@@ -260,6 +296,7 @@ addParameter(inp,'BVsize',[])                 %Size of blood vessels [min diamet
 % defaults is in the range range [0.6*opt.gSig,0.9*opt.gSig];
 addParameter(inp,'do_alignment_translation',true,valid_bool_scalar)       % Do inter-session aligment. If false video will be concatenated without correcting translation missalignments.
 addParameter(inp,'do_alignment_non_rigid',true,valid_bool_scalar)         % Do inter-session aligment. If false video will be concatenated without correcting non-rigid missalignments.
+addParameter(inp,'alignment_mode','full',@(x) ischar(x) || (isstring(x) && isscalar(x))) % 'full', 'translation', or 'single_non_rigid' for faster exploratory runs.
 
 addParameter(inp,'preprocessing',[])
 %% Inter-session alignment variables
@@ -311,6 +348,20 @@ parse(inp,varargin{:});
 opt=inp.Results;
 if isstring(opt.batch_sz)
     opt.batch_sz = char(opt.batch_sz);
+end
+if isstring(opt.alignment_mode)
+    opt.alignment_mode = char(opt.alignment_mode);
+end
+switch lower(opt.alignment_mode)
+    case 'full'
+        % Preserve explicit flags.
+    case 'translation'
+        opt.do_alignment_non_rigid = false;
+        opt.final_neurons = false;
+    case 'single_non_rigid'
+        opt.final_neurons = false;
+    otherwise
+        error('CaliAli:InvalidAlignmentMode','alignment_mode must be full, translation, or single_non_rigid.');
 end
 
 if ~isempty(opt.sf) && opt.sf <= 0

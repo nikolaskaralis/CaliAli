@@ -105,9 +105,9 @@ function Y = remove_BV(Y, BV)
 
 % Create a mask based on the squared blood vessel projection (to enhance BV features)
 mask = mat2gray(BV.^2); % Square the BV to highlight the vessels
-mask = (1 - double(mask)); % Invert the mask to get non-BV regions
+mask = single(1 - mask); % Invert the mask to get non-BV regions
 mask = mask.^10; % Apply a power of 10 to sharpen the mask
 
 % Apply the mask to the session data (remove blood vessels)
-Y = double(Y) .* mask; % Element-wise multiplication removes BV areas
+Y = single(Y) .* mask; % Element-wise multiplication removes BV areas
 end

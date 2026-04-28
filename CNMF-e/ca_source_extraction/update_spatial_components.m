@@ -23,7 +23,6 @@ function [A,b,C] = update_spatial_components(Y,C,f,A_,P,options)
 % Written by:
 % Eftychios A. Pnevmatikakis, Simons Foundation, 2015
 
-warning('off', 'MATLAB:maxNumCompThreads:Deprecated');
 memmaped = isobject(Y);
 if memmaped
     sizY = size(Y,'Y');
@@ -72,7 +71,7 @@ end
 Cf = [C;f];
 
 if use_parallel         % solve BPDN problem for each pixel
-    Nthr = max(2*maxNumCompThreads,round(d*T/2^24));
+    Nthr = max(2*calialiMaxNumCompThreads,round(d*T/2^24));
     siz_row = [floor(d/Nthr)*ones(Nthr-1,1);d-floor(d/Nthr)*(Nthr-1)];
     indeces = [0;cumsum(siz_row)];
     if ~memmaped

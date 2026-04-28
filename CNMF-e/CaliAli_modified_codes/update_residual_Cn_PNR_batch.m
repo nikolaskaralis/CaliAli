@@ -29,7 +29,9 @@ for i=progress(1:size(fn,2)-1)
 
      Y=detrend_vid(Y,neuron.CaliAli_options);
 
-    if strcmp(neuron.CaliAli_options.preprocessing.structure,'neuron')
+    if neuron.CaliAli_options.preprocessing.fastPNR
+        [Cn_all(:,:,i),pnr_all(:,:,i)] = get_PNR_Cn_fast(Y);
+    elseif strcmp(neuron.CaliAli_options.preprocessing.structure,'neuron')
         [~,Cn_all(:,:,i),pnr_all(:,:,i)]=get_PNR_coor_greedy_PV(Y,gSig,[],[],n_enhanced);
     elseif strcmp(neuron.CaliAli_options.preprocessing.structure,'dendrite')
         [Cn_all(:,:,i),pnr_all(:,:,i)]=get_PNR_Cn_dendrite(Y,neuron.CaliAli_options);

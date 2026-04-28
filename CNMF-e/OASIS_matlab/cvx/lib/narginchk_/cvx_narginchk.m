@@ -1,4 +1,4 @@
-function narginchk(imin, imax)
+function cvx_narginchk(imin, imax)
 narg = evalin('caller', 'nargin');
 if narg < imin
 	me = {'MATLAB:narginchk:notEnoughInputs', 'Not enough input arguments.'};

@@ -82,16 +82,16 @@ end
 
 function Y=noise_scaling(Y)
 [d1,d2,d3]=size(Y);
-Y=double(reshape(Y,[d1*d2,d3]));
+Y=single(reshape(Y,[d1*d2,d3]));
 Y=Y./max(Y,[],'all');
-Y=Y+randn(size(Y))./10000;
+Y=Y+single(randn(size(Y)))./10000;
 if d3>1000
 Y=Y./GetSn_fast(Y,100,d1,d2);
 else
 Y=Y./GetSn(Y);
 end
-Y(isnan(Y))=randn(sum(isnan(Y),'all'),1);
-Y(isinf(Y))=randn(sum(isinf(Y),'all'),1);
+Y(isnan(Y))=single(randn(sum(isnan(Y),'all'),1));
+Y(isinf(Y))=single(randn(sum(isinf(Y),'all'),1));
 Y=reshape(Y,[d1,d2,d3]);
 end
 

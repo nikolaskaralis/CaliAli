@@ -35,9 +35,15 @@ end
 % Create batch list if batch_sz > 0
 [opt.input_files,opt.batch_sz] = create_batch_list(opt.input_files, opt.batch_sz,'_mc');
 CaliAli_options.motion_correction.batch_sz=opt.batch_sz;
+template = [];
 
 % Pre-allocate output files and get processing flags
 [process_flags,out_pre] = pre_allocate_outputs(opt.input_files,'_mc');
+
+if opt.use_parallel && isempty(gcp('nocreate'))
+    parpool
+end
+
 try
     % Loop through each input file/batch for motion correction
     for k = 1:length(opt.input_files)
@@ -69,11 +75,6 @@ try
 
         % Load video data (handles both string and batch inputs)
         Y = CaliAli_load(opt.input_files{k}, 'Y');
-
-        % Start parallel pool if not already running
-        if isempty(gcp('nocreate'))
-            parpool
-        end
         disp('Calculating translation shift...')
         % Perform rigid motion correction
         if intra_sess_tag

@@ -203,7 +203,7 @@ end
 if nd == 2; Np = cellfun(@(x) 0,Nr,'un',0); end
 
 %%
-maxNumCompThreads(1);
+calialiMaxNumCompThreads(1);
 template = mat2cell_ov(template_in,xx_s,xx_f,yy_s,yy_f,zz_s,zz_f,overlap_pre,sizY);
 temp_mat = template_in;
 use_windowing = options.use_windowing;
@@ -493,5 +493,5 @@ if memmap;
     M_final.shifts = shifts_g;
     M_final.template = template;
 end
-maxNumCompThreads('automatic');
+calialiMaxNumCompThreads('automatic');
 end

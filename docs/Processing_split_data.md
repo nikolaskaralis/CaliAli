@@ -55,3 +55,6 @@ This will generate three `.mat` files—one for each session—containing the da
 
 !!! tip
     As of v1.4.5 the importer applies natural sorting even when filenames are not zero-padded (for example `2.avi` vs `10.avi`), so mixed-width numbering will no longer scramble the concatenated output.
+
+!!! tip
+    Folder processing creates intermediate per-segment `_ds.mat` files before writing the final `_con.mat`. Set `keep_split_ds_files = false` to delete those intermediate files automatically after the concatenated output passes validation.

@@ -76,7 +76,7 @@ end
 if ~any(~strncmp(which('square', '-all'), mpath2, npath2)),
     addpaths{end+1} = [ 'functions', fs, 'square_' ]; 
 end
-if ~any(~strncmp(which('narginchk', '-all'), mpath2, npath2)),
+if exist('narginchk','builtin') ~= 5 && ~any(~strncmp(which('narginchk', '-all'), mpath2, npath2)),
     addpaths{end+1} = [ 'lib', fs, 'narginchk_' ]; 
 end
 addpaths = strcat( [ mpath, fs ], addpaths );

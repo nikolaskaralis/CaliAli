@@ -23,6 +23,31 @@ function V = Non_rigid_mc(V, ref, opt)
 % Date: 2025
 
 % Get a pyramid of images (e.g., blood vessel and neuron projections)
+if isfield(opt, 'non_rigid_mode')
+    non_rigid_mode = opt.non_rigid_mode;
+    if isstring(non_rigid_mode)
+        non_rigid_mode = char(non_rigid_mode);
+    end
+else
+    non_rigid_mode = 'full';
+end
+
+switch lower(non_rigid_mode)
+    case 'full'
+        % Preserve the original multi-level behavior.
+    case 'single_pass'
+        if isfield(opt, 'non_rigid_pyramid') && numel(opt.non_rigid_pyramid) > 1
+            opt.non_rigid_pyramid = opt.non_rigid_pyramid(1);
+        end
+        if isfield(opt, 'non_rigid_options') && numel(opt.non_rigid_options) > 1
+            opt.non_rigid_options = opt.non_rigid_options(1);
+        end
+        if isfield(opt, 'non_rigid_batch_size') && numel(opt.non_rigid_batch_size) == 2
+            opt.non_rigid_batch_size = [max(40, opt.non_rigid_batch_size(1)), max(120, opt.non_rigid_batch_size(2))];
+        end
+    otherwise
+        error('CaliAli:InvalidNonRigidMode', 'non_rigid_mode must be full or single_pass.');
+end
 
 fprintf('Appling non-rigid motion correction...\n');
 

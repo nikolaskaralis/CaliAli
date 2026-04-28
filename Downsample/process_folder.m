@@ -17,5 +17,7 @@ if ~exist(parent_dir, 'dir')
 end
 outpath = fullfile(parent_dir, [session_dir '_con.mat']);
 CaliAli_concatenate_files(outpath,CaliAli_options.downsampling.output_files);
-
+if isfield(opt, 'keep_split_ds_files') && ~opt.keep_split_ds_files
+    cleanup_split_ds_files(outpath, CaliAli_options.downsampling.output_files);
+end
 

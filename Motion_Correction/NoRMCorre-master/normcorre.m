@@ -193,7 +193,7 @@ end
 if nd == 2; Np = cellfun(@(x) 0,Nr,'un',0); end
 
 %%
-%maxNumCompThreads(2);
+%calialiMaxNumCompThreads(2);
 template = mat2cell_ov(template_in,xx_s,xx_f,yy_s,yy_f,zz_s,zz_f,overlap_pre,sizY);
 temp_mat = template_in;
 fftTemp = cellfun(@fftn,template,'un',0);
@@ -499,6 +499,6 @@ end
 if make_avi && plot_flag
     close(vidObj);
 end
-maxNumCompThreads('automatic');
+calialiMaxNumCompThreads('automatic');
 fprintf('done. \n');
 end

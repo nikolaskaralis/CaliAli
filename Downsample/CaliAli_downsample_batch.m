@@ -49,15 +49,24 @@ for k = 1:numel(opt.input_files)
         end
     end
 
-    reader = build_reader(fullFileName, ext);
+    reader_opts = struct( ...
+        'prefer_ffmpeg', logical(opt.use_fast_ffmpeg), ...
+        'ffmpeg_path', opt.ffmpeg_path, ...
+        'spatial_ds', opt.spatial_ds);
+    reader = build_reader(fullFileName, ext, reader_opts);
     ds_frames = int32(1:opt.temporal_ds:reader.nFrames);
     Fds = numel(ds_frames);
 
     first_frame = reader.read_range(1, 1);
-    [d1, d2] = size(imresize(double(first_frame(:, :, 1)), 1/opt.spatial_ds, 'bilinear'));
+    if isfield(reader, 'applies_spatial_ds') && reader.applies_spatial_ds
+        [d1, d2] = size(first_frame(:, :, 1));
+    else
+        [d1, d2] = size(imresize(double(first_frame(:, :, 1)), 1/opt.spatial_ds, 'bilinear'));
+    end
 
     batch_size = resolve_batch_size(batch_sz, [d1, d2], Fds);
-    reader = build_reader(fullFileName, ext, struct('batch_size', batch_size));
+    %batch_size = 30000;
+    reader.opts.batch_size = batch_size;
 
     target_class = reader.src_class;
     if isempty(target_class)
@@ -73,12 +82,17 @@ for k = 1:numel(opt.input_files)
 
         raw_start = ds_frames(startIdx);
         raw_end   = ds_frames(endIdx);
-        raw = reader.read_range(raw_start, raw_end);
+        if isfield(reader, 'read_ds_range') && opt.temporal_ds > 1
+            raw = reader.read_ds_range(raw_start, raw_end, opt.temporal_ds);
+        else
+            raw = reader.read_range(raw_start, raw_end);
+            keep_idx = ds_frames(startIdx:endIdx) - raw_start + 1;
+            raw = raw(:, :, keep_idx);
+        end
 
-        keep_idx = ds_frames(startIdx:endIdx) - raw_start + 1;
-        raw = raw(:, :, keep_idx);
-
-        raw = apply_spatial_ds(raw, opt.spatial_ds, [d1, d2]);
+        if ~isfield(reader, 'applies_spatial_ds') || ~reader.applies_spatial_ds
+            raw = apply_spatial_ds(raw, opt.spatial_ds, [d1, d2]);
+        end
         chunk = cast(raw, target_class);
 
         payload = {'Y', chunk};
@@ -109,8 +123,11 @@ if nargin < 3 || isempty(opts)
     opts = struct();
 end
 if ~isfield(opts, 'prefer_ffmpeg'), opts.prefer_ffmpeg = true; end
+if ~isfield(opts, 'ffmpeg_path'), opts.ffmpeg_path = '\\iss\karalis\code\tools\ffmpeg.exe'; end
+if ~isfield(opts, 'spatial_ds'), opts.spatial_ds = 1; end
 if ~isfield(opts, 'batch_size'), opts.batch_size = []; end
 ext = lower(ext);
+reader.opts = opts;
 switch true
     case contains(ext, {'.avi', '.m4v', '.mp4'})
         v = VideoReader(fullFileName);
@@ -122,12 +139,16 @@ switch true
             f0 = rgb2gray(f0);
         end
         reader.src_class = class(f0);
+        reader.applies_spatial_ds = false;
         reader.read_range = @(s, e) read_video_range(v, s, e);
-        if opts.prefer_ffmpeg && ismac
-            ffmpegPath = find_packaged_ffmpeg();
+        if opts.prefer_ffmpeg
+            ffmpegPath = resolve_ffmpeg_path(opts.ffmpeg_path);
             if ~isempty(ffmpegPath)
+                disp('Using ffmpeg')
                 bitDepth = class_to_bitdepth(reader.src_class);
-                reader.read_range = @(s, e) read_video_range_ffmpeg(fullFileName, s, e, reader.size, reader.fps, ffmpegPath, bitDepth);
+                reader.read_range = @(s, e) read_video_range_ffmpeg(fullFileName, s, e, reader.size, reader.fps, ffmpegPath, bitDepth, opts.spatial_ds);
+                reader.read_ds_range = @(s, e, t) read_video_range_ffmpeg(fullFileName, s, e, reader.size, reader.fps, ffmpegPath, bitDepth, opts.spatial_ds, t);
+                reader.applies_spatial_ds = opts.spatial_ds > 1;
             end
         end
     case contains(ext, '.isxd')
@@ -269,7 +290,7 @@ end
 end
 
 
-function frames = read_video_range_ffmpeg(videoFile, start_idx, end_idx, vid_size, fps, ffmpegPath, bitDepth)
+function frames = read_video_range_ffmpeg(videoFile, start_idx, end_idx, vid_size, fps, ffmpegPath, bitDepth, spatial_ds, temporal_ds)
 if nargin < 6 || isempty(ffmpegPath)
     error('FFmpeg path is required for ffmpeg-based reading.');
 end
@@ -279,8 +300,15 @@ end
 if nargin < 7 || isempty(bitDepth)
     bitDepth = 8;
 end
+if nargin < 8 || isempty(spatial_ds)
+    spatial_ds = 1;
+end
+if nargin < 9 || isempty(temporal_ds)
+    temporal_ds = 1;
+end
 start_sec = (start_idx - 1) / fps;
-n = end_idx - start_idx + 1;
+raw_n = end_idx - start_idx + 1;
+n = ceil(raw_n / temporal_ds);
 
 rawFile = [tempname '.raw'];
 if bitDepth > 8
@@ -290,8 +318,19 @@ else
     pixFmt = 'gray';
     readType = 'uint8';
 end
-cmd = sprintf('\"%s\" -v error -ss %.6f -i \"%s\" -vframes %d -vf format=%s -f rawvideo -pix_fmt %s \"%s\"', ...
-    ffmpegPath, start_sec, videoFile, n, pixFmt, pixFmt, rawFile);
+out_size = [vid_size(1), vid_size(2)];
+scaleFilter = sprintf('format=%s', pixFmt);
+if spatial_ds > 1
+    out_size = max(1, round(out_size ./ spatial_ds));
+    scaleFilter = sprintf('scale=%d:%d:flags=bilinear,format=%s', out_size(2), out_size(1), pixFmt);
+end
+if temporal_ds > 1
+    vf = sprintf('select=''not(mod(n\\,%d))'',%s', temporal_ds, scaleFilter);
+else
+    vf = scaleFilter;
+end
+cmd = sprintf('\"%s\" -v error -ss %.6f -i \"%s\" -vframes %d -vf \"%s\" -vsync 0 -f rawvideo -pix_fmt %s \"%s\"', ...
+    ffmpegPath, start_sec, videoFile, raw_n, vf, pixFmt, rawFile);
 status = system(cmd);
 if status ~= 0
     error('FFmpeg failed when reading %s (frames %d-%d).', videoFile, start_idx, end_idx);
@@ -302,18 +341,40 @@ rawData = fread(fid, inf, readType);
 fclose(fid);
 delete(rawFile);
 
-expected = vid_size(2) * vid_size(1) * n;
+expected = out_size(2) * out_size(1) * n;
 if numel(rawData) < expected
-    n = floor(numel(rawData) / (vid_size(1) * vid_size(2)));
-    rawData = rawData(1:vid_size(1) * vid_size(2) * n);
+    n = floor(numel(rawData) / (out_size(1) * out_size(2)));
+    rawData = rawData(1:out_size(1) * out_size(2) * n);
 end
 if numel(rawData) > expected
     rawData = rawData(1:expected);
 end
 
-frames = reshape(rawData, [vid_size(2), vid_size(1), n]);
+frames = reshape(rawData, [out_size(2), out_size(1), n]);
 frames = permute(frames, [2, 1, 3]);
 frames = cast(frames, bitdepth_to_class(bitDepth));
+end
+
+
+function ffmpegPath = resolve_ffmpeg_path(configuredPath)
+ffmpegPath = '';
+if ~isempty(configuredPath)
+    configuredPath = char(configuredPath);
+    if exist(configuredPath, 'file') == 2
+        ffmpegPath = configuredPath;
+        return
+    end
+end
+
+ffmpegPath = find_packaged_ffmpeg();
+if ~isempty(ffmpegPath)
+    return
+end
+
+[status, cmdout] = system('ffmpeg -version');
+if status == 0 && ~isempty(cmdout)
+    ffmpegPath = 'ffmpeg';
+end
 end
 
 
@@ -419,6 +480,9 @@ if ~exist(parent_dir, 'dir')
 end
 outpath = fullfile(parent_dir, [session_dir '_con.mat']);
 CaliAli_concatenate_files(outpath, sub_options.downsampling.output_files);
+if ~opt.keep_split_ds_files
+    cleanup_split_ds_files(outpath, sub_options.downsampling.output_files);
+end
 
 opt.output_files = [opt.output_files, {outpath}];
 end

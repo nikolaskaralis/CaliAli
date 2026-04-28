@@ -25,6 +25,7 @@ This table lists all **CaliAli parameters**, their **default values**, a brief *
 | `spatial_ds`       | `1`          | Spatial downsampling factor | Increase for faster processing, decrease for higher resolution. |
 | `temporal_ds`      | `1`          | Temporal downsampling factor | Increase only if memory constraints prevent full processing. |
 | `file_extension`    | `'avi'`      | File extension for processed videos organized in folders | Used when sessions are split into multiple files. :material-information-outline:{ title="For example, data acquired with the UCLA Miniscope is often divided into multiple .avi videos. Instead of selecting individual .avi files, you can choose the entire folder so CaliAli finds matching files, treats them as one session, and concatenates them into a single .mat file." } |
+| `keep_split_ds_files` | `true`    | Keep intermediate segment `_ds.mat` files after folder concatenation | Set to `false` to delete per-segment downsampled files after the `_con.mat` output validates. |
 | `force_non_negative ` | `1 `| Enforce non-negative pixels during preprocessing | When enabled, values are lifted and clipped within `CaliAli_remove_background` after noise scaling. |
 | `force_non_negative_tolerance`  | `13` | Non-negative tolerance threshold | Gap added before clipping; increase only if you observe residual bias in dark regions. |
 
@@ -44,7 +45,11 @@ This table lists all **CaliAli parameters**, their **default values**, a brief *
 | Parameter Name       | Default Value | Description | How to Choose |
 |----------------------|--------------|-------------|--------------|
 | `reference_projection_rigid` | `'BV'`  | Reference projection for rigid correction | Choose `neuron` if blood vessels are not suitable. |
+| `motion_correction_mode` | `'fast'` | Motion-correction preset | Use `full` for the conservative path or `fast` for the default quicker path. |
+| `use_fast_shift` | `true` via `motion_correction_mode='fast'` | Use NoRMCorre shift application utilities | Leave enabled unless you need the exact frame-by-frame fallback path. |
+| `use_parallel` | `true` | Use parallel workers for motion correction | Leave enabled unless the overhead of a pool outweighs the benefit on tiny inputs. |
 | `do_non_rigid`      | `false`      | Perform non-rigid motion correction | Enable only after confirming rigid correction was insufficient. :material-information-outline:{ title="The current non-rigid module is experimental and may introduce field-of-view artifacts; an updated implementation is planned." } |
+| `non_rigid_mode` | `'single_pass'` via `motion_correction_mode='fast'` | Non-rigid speed preset | Use `full` for the original multi-level behavior. |
 | `non_rigid_pyramid` | `{'BV','neuron','neuron'}` | Multi-level registration pyramid for non-rigid correction | Use default unless BV is unavailable. |
 | `non_rigid_batch_size` | `[20,60]` | Batch size range for non-rigid correction, CaliAli will optimize within this range. | Set as `[2 x sf, 6 x sf]`. |
 
